@@ -1,5 +1,6 @@
 #include "pressure_sensor.h"
 #include "crc.h"
+#include "command_codes.h"
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -140,15 +141,135 @@ int cmd_network_tr_set(PressureSensor *self)
 }
 
 int cmd_acquistion_start(PressureSensor *self){
+    size_t tx_buffer_len =0;
+    int bytes_read =0;
+    size_t data_len =0;
+    int ret;
     
-
+    clear_buffers();
+    packet_init(&self->protocol_packet,NETWORK_TOKEN_ADDRESS,NETWORK_TARGET_ADDR,NETWORK_SERVICE_NORMAL);
+    
+    data_packet.data[0] = self->index;
+    data_packet.data[1] = AcquisitionStart;
+    data_packet.data[2] = 1;    //Channel 
+    data_packet.data[3] = 0;    //unit
+    data_packet.data[4] = (ACQUISITION_DECIMITATION >> 8) & 0xFF;
+    data_packet.data[5] = ACQUISITION_DECIMITATION & 0xFF;
+    data_packet.data[6] = 0;
+    data_packet.data[7] = 0;
+    data_packet.data[8] = 0;
+    data_packet.data[9] = 1;
+    data_packet.data_len = 10;
+    self->index++;
+    
+    packet_serialize(&self->protocol_packet,&data_packet,tx_buffer,&tx_buffer_len);
+    
+    if(! serial_write_bytes(self->fd,tx_buffer,tx_buffer_len))
+        return -1;
+    
+    bytes_read = serial_read_bytes(self->fd,rx_buffer,ACQUISITION_START_RX_LEN);
+    if(bytes_read != ACQUISITION_START_RX_LEN){
+        return -1;
+    }
+    memset(rx_data,0x00,sizeof(rx_data));
+    ret = packet_deserialize(rx_buffer,bytes_read,rx_data,&data_len);
+    if(ret <0){
+        return ret;
+    }
+    if(data_len < 8){
+        return -1;
+    }
+    else{
+        uint8_t status = rx_data[0];
+        uint8_t channel = rx_data[1];
+        uint16_t client_unit = (rx_data[2] << 8) | rx_data[3];
+        float offset = *(float *)(rx_data + 4);
+        printf("Acquisition Start - Status: %d, Channel: %d, Unit: %d, Offset: %f\n", status, channel, client_unit, offset);
+    }
+    return 0;
 }
 
 int cmd_acquisition_stop(PressureSensor *self){
+    size_t tx_buffer_len =0;
+    int bytes_read =0;
+    size_t data_len =0;
+    int ret;
+    
+    clear_buffers();
+    packet_init(&self->protocol_packet,NETWORK_TOKEN_ADDRESS,NETWORK_TARGET_ADDR,NETWORK_SERVICE_NORMAL);
+    
+    data_packet.data[0] = self->index;
+    data_packet.data[1] = AcquisitionStop;
+    data_packet.data[2] = 1;    //Channel 
+    data_packet.data_len = 3;
+    self->index++;
+    packet_serialize(&self->protocol_packet,&data_packet,tx_buffer,&tx_buffer_len);
+    
+    if(! serial_write_bytes(self->fd,tx_buffer,tx_buffer_len))
+        return -1;
+    
+    bytes_read = serial_read_bytes(self->fd,rx_buffer,ACQUISITION_STOP_RX_LEN);
+    if(bytes_read != ACQUISITION_STOP_RX_LEN){
+        return -1;
+    }
+    memset(rx_data,0x00,sizeof(rx_data));
+    ret = packet_deserialize(rx_buffer,bytes_read,rx_data,&data_len);
+    if(ret <0){
+        return ret;
+    }
+    if(data_len < 8){
+        return -1;
+    }
+    else{
+        uint8_t status = rx_data[0];
+        uint8_t channel = rx_data[1];
+        printf("Acquisition Start - Status: %d, Channel: %df\n", status, channel);
+    }
+    return 0;
 
 }
 
 int cmd_acquisition_get(PressureSensor *self){
+    size_t tx_buffer_len =0;
+    int bytes_read =0;
+    size_t data_len =0;
+    int ret;
+    
+    clear_buffers();
+    packet_init(&self->protocol_packet,NETWORK_TOKEN_ADDRESS,NETWORK_TARGET_ADDR,NETWORK_SERVICE_NORMAL);
+    
+    data_packet.data[0] = self->index;
+    data_packet.data[1] = AcquisitionGet;
+    data_packet.data[2] = 1;    //Channel 
+    data_packet.data_len = 3;
+    self->index++;
+    packet_serialize(&self->protocol_packet,&data_packet,tx_buffer,&tx_buffer_len);
+    
+    if(! serial_write_bytes(self->fd,tx_buffer,tx_buffer_len))
+        return -1;
+    
+    bytes_read = serial_read_bytes(self->fd,rx_buffer,ACQUISITION_GET_RX_LEN);
+    if(bytes_read != ACQUISITION_GET_RX_LEN){
+        return -1;
+    }
+    memset(rx_data,0x00,sizeof(rx_data));
+    ret = packet_deserialize(rx_buffer,bytes_read,rx_data,&data_len);
+    if(ret <0){
+        return ret;
+    }
+    if(data_len < 8){
+        return -1;
+    }
+    else{
+        uint8_t status = rx_data[0];
+        uint8_t channel = rx_data[1];
+        uint32_t index = (rx_data[2] << 24) | 
+                            (rx_data[3] << 16) | (rx_data[4] <<8) | rx_data[5];
+        float value = *(float *)(rx_data + 6);
+        printf("Acquisition Start - Status: %d, Channel: %d, index: %d, value %f\n", status, channel,index,value);
+    }
+    return 0;
+
 
 }
 
@@ -179,6 +300,12 @@ int init_pressure_sensor(PressureSensor *self, serial_fd_t serial_fd)
         fprintf(stderr,"Error setting Unit Token Ring..\n");
         return -1;
     }
+
+    cmd_acquistion_start(self);
+    sleep(0.100);
+    cmd_acquisition_get(self);
+    sleep(0.100);
+    cmd_acquisition_stop(self);
     return 0;
 }
 

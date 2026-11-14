@@ -36,7 +36,7 @@
 #define ACQUISITION_STOP_RX_LEN       0x09 + PACKET_OVERHEAD
 
 
-#define  ACQUISITION_DECIMITATION     10    //25hz
+#define  ACQUISITION_DECIMITATION     1    //25hz
 
 typedef struct {
     serial_fd_t fd;
